@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ETF 存股投資追蹤 (多帳)</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f7fa; color: #333; }
+
+#login-screen { display: flex; justify-content: center; align-items: center; min-height: 100vh; background: linear-gradient(135deg, #e67e22 0%, #e74c3c 100%); }
+.login-box { background: #fff; padding: 40px; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); text-align: center; width: 320px; }
+.login-box h1 { font-size: 20px; margin-bottom: 8px; }
+.login-box p { font-size: 13px; color: #888; margin-bottom: 24px; }
+.login-box input { width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 18px; text-align: center; letter-spacing: 8px; outline: none; }
+.login-box input:focus { border-color: #e67e22; }
+.login-box button { width: 100%; margin-top: 16px; padding: 12px; background: #e67e22; color: #fff; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; }
+.login-box button:hover { background: #d35400; }
+.login-error { color: #e74c3c; font-size: 13px; margin-top: 8px; display: none; }
+
+#app { display: none; max-width: 1400px; margin: 0 auto; padding: 16px; }
+header { display: flex; justify-content: space-between; align-items: center; padding: 16px 0; border-bottom: 2px solid #e0e0e0; margin-bottom: 20px; }
+header h1 { font-size: 22px; }
+.header-actions { display: flex; gap: 8px; }
+.header-actions button { padding: 8px 16px; border: 1px solid #ddd; border-radius: 6px; background: #fff; cursor: pointer; font-size: 13px; }
+.header-actions button:hover { background: #f0f0f0; }
+.header-actions button.primary { background: #e67e22; color: #fff; border-color: #e67e22; }
+.header-actions button.primary:hover { background: #d35400; }
+.sync-status { font-size: 11px; color: #999; margin-top: 4px; text-align: right; }
+.sync-status.synced { color: #27ae60; }
+.sync-status.error { color: #e74c3c; }
+
+/* Tabs */
+.page-tabs { display: flex; gap: 0; margin-bottom: 20px; border-bottom: 2px solid #e0e0e0; }
+.page-tab { padding: 10px 20px; cursor: pointer; font-size: 14px; border: 1px solid transparent; border-bottom: none; border-radius: 8px 8px 0 0; background: #f0f0f0; margin-bottom: -2px; }
+.page-tab.active { background: #fff; border-color: #e0e0e0; font-weight: 600; color: #e67e22; }
+.page-tab:hover:not(.active) { background: #e8e8e8; }
+.tab-add { padding: 10px 14px; cursor: pointer; font-size: 16px; color: #999; border: none; background: none; }
+.tab-add:hover { color: #e67e22; }
+.tab-close { margin-left: 8px; font-size: 14px; color: #ccc; }
+.tab-close:hover { color: #e74c3c; }
+
+.settings-panel { background: #fff; border-radius: 10px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+.settings-panel h2 { font-size: 16px; margin-bottom: 12px; cursor: pointer; user-select: none; }
+.settings-panel h2::before { content: "▼ "; font-size: 12px; }
+.settings-panel.collapsed h2::before { content: "▶ "; }
+.settings-panel.collapsed .settings-grid { display: none; }
+.settings-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.setting-item { display: flex; align-items: center; gap: 8px; }
+.setting-item label { font-size: 13px; color: #666; white-space: nowrap; min-width: 100px; }
+.setting-item input { flex: 1; padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+.setting-item .hint { font-size: 11px; color: #aaa; }
+.derived-values { margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee; display: flex; gap: 24px; font-size: 13px; }
+.derived-values span { color: #e67e22; font-weight: 600; }
+
+.chart-container { background: #fff; border-radius: 10px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+.chart-container canvas { max-height: 300px; }
+
+.table-container { background: #fff; border-radius: 10px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); overflow-x: auto; }
+.table-container h2 { font-size: 16px; margin-bottom: 12px; }
+.table-actions { display: flex; gap: 8px; margin-bottom: 12px; }
+.table-actions button { padding: 6px 14px; border: 1px solid #ddd; border-radius: 6px; background: #fff; cursor: pointer; font-size: 13px; }
+.table-actions button:hover { background: #f0f0f0; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { background: #f8f9fa; padding: 10px 8px; text-align: right; border-bottom: 2px solid #e0e0e0; white-space: nowrap; font-size: 12px; }
+th:nth-child(1), th:nth-child(2) { text-align: center; }
+td { padding: 8px; text-align: right; border-bottom: 1px solid #f0f0f0; }
+td:nth-child(1) { text-align: center; font-weight: 600; color: #e67e22; }
+td:nth-child(2) { text-align: center; }
+tr:hover { background: #fffaf5; }
+td input { width: 100%; padding: 4px 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; text-align: right; }
+td input[type="date"] { text-align: center; }
+.calculated { color: #666; }
+.path-value { color: #e67e22; font-weight: 500; }
+.positive { color: #27ae60; }
+.negative { color: #e74c3c; }
+.delete-btn { background: none; border: none; color: #ccc; cursor: pointer; font-size: 16px; padding: 2px 6px; }
+.delete-btn:hover { color: #e74c3c; }
+
+.gas-config { background: #fff3cd; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; font-size: 13px; display: flex; align-items: center; gap: 8px; }
+.gas-config input { flex: 1; padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; }
+.gas-config button { padding: 6px 12px; border: none; border-radius: 4px; background: #e67e22; color: #fff; cursor: pointer; font-size: 13px; }
+
+.summary-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.summary-card { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+.summary-card .label { font-size: 12px; color: #999; }
+.summary-card .value { font-size: 20px; font-weight: 700; margin-top: 4px; }
+.summary-card .sub { font-size: 12px; color: #999; margin-top: 2px; }
+
+/* Rename dialog */
+.modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 1000; justify-content: center; align-items: center; }
+.modal-overlay.show { display: flex; }
+.modal-box { background: #fff; padding: 24px; border-radius: 12px; width: 360px; }
+.modal-box h3 { margin-bottom: 12px; }
+.modal-box input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; margin-bottom: 12px; }
+.modal-box .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.modal-box button { padding: 8px 16px; border: 1px solid #ddd; border-radius: 6px; background: #fff; cursor: pointer; }
+.modal-box button.primary { background: #e67e22; color: #fff; border-color: #e67e22; }
+
+@media (max-width: 768px) {
+  .settings-grid { grid-template-columns: 1fr; }
+  .summary-cards { grid-template-columns: repeat(2, 1fr); }
+  table { font-size: 11px; }
+  th, td { padding: 6px 4px; }
+}
+</style>
+</head>
+<body>
+
+<div id="login-screen">
+  <div class="login-box">
+    <h1>ETF 存股追蹤</h1>
+    <p>多帳管理版</p>
+    <input type="password" id="password-input" maxlength="4" placeholder="密碼" autofocus>
+    <button onclick="tryLogin()">登入</button>
+    <div class="login-error" id="login-error">密碼錯誤</div>
+  </div>
+</div>
+
+<div id="app">
+  <header>
+    <h1>ETF 存股投資追蹤</h1>
+    <div>
+      <div class="header-actions">
+        <button class="primary" onclick="saveToSheet()">儲存</button>
+      </div>
+      <div class="sync-status" id="sync-status"></div>
+    </div>
+  </header>
+
+  <div class="gas-config" id="gas-config">
+    <span>Google Apps Script URL：</span>
+    <input type="text" id="gas-url" placeholder="貼上你的 Apps Script Web App URL">
+    <button onclick="saveGasUrl()">儲存</button>
+  </div>
+
+  <!-- Page Tabs -->
+  <div class="page-tabs" id="page-tabs"></div>
+
+  <!-- Page Content -->
+  <div id="page-content">
+    <div class="settings-panel" id="settings-panel">
+      <h2 onclick="toggleSettings()">投資參數設定</h2>
+      <div class="settings-grid">
+        <div class="setting-item">
+          <label>目標金額</label>
+          <input type="number" id="s-target" onchange="onSettingsChange()">
+        </div>
+        <div class="setting-item">
+          <label>目前金額</label>
+          <input type="number" id="s-current" onchange="onSettingsChange()">
+        </div>
+        <div class="setting-item">
+          <label>投資月數</label>
+          <input type="number" id="s-months" onchange="onSettingsChange()">
+          <span class="hint">建議120+</span>
+        </div>
+        <div class="setting-item">
+          <label>月報酬率</label>
+          <input type="number" id="s-return" step="0.0001" onchange="onSettingsChange()">
+          <span class="hint">年報酬x0.7/12</span>
+        </div>
+        <div class="setting-item">
+          <label>月通膨率</label>
+          <input type="number" id="s-inflation" step="0.0001" onchange="onSettingsChange()">
+          <span class="hint">通常3%/12</span>
+        </div>
+        <div class="setting-item">
+          <label>目標 ETF</label>
+          <input type="text" id="s-etf" onchange="onSettingsChange()">
+        </div>
+      </div>
+      <div class="derived-values">
+        <div>R (實質月報酬率) = <span id="d-R">-</span></div>
+        <div>每月基礎投入 $C = <span id="d-C">-</span></div>
+      </div>
+    </div>
+
+    <div class="summary-cards" id="summary-cards"></div>
+
+    <div class="chart-container">
+      <canvas id="chart"></canvas>
+    </div>
+
+    <div class="table-container">
+      <h2>月投資紀錄</h2>
+      <div class="table-actions">
+        <button onclick="addRow()">+ 新增月份</button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>月</th>
+            <th>購買日期</th>
+            <th>存股路徑</th>
+            <th>股價</th>
+            <th>累計市值</th>
+            <th>應買股數</th>
+            <th>實際股數</th>
+            <th>投資金額</th>
+            <th>投資累計</th>
+            <th>股數累計</th>
+            <th>庫存現值</th>
+            <th>投報率</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="data-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Rename Modal -->
+<div class="modal-overlay" id="rename-modal">
+  <div class="modal-box">
+    <h3>重新命名</h3>
+    <input type="text" id="rename-input" placeholder="頁面名稱">
+    <div class="modal-actions">
+      <button onclick="closeRenameModal()">取消</button>
+      <button class="primary" onclick="confirmRename()">確定</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const PASSWORD = '1229';
+const STORAGE_KEY = 'etf-tracker-multi-data';
+const GAS_URL_KEY = 'etf-tracker-multi-gas-url';
+
+let pages = [
+  {
+    name: '頁面 1',
+    settings: { target: 10000000, current: 0, months: 120, monthlyReturn: 0.0085, monthlyInflation: 0.0025, etf: '' },
+    entries: []
+  }
+];
+let currentPageIndex = 0;
+let chart = null;
+let hasUnsavedChanges = false;
+let renamingIndex = -1;
+
+function markDirty() { hasUnsavedChanges = true; }
+
+window.addEventListener('beforeunload', function(e) {
+  if (hasUnsavedChanges) { e.preventDefault(); e.returnValue = ''; }
+});
+
+// --- Auth ---
+function tryLogin() {
+  if (document.getElementById('password-input').value === PASSWORD) {
+    sessionStorage.setItem('etf-multi-authed', '1');
+    showApp();
+  } else {
+    document.getElementById('login-error').style.display = 'block';
+  }
+}
+document.getElementById('password-input').addEventListener('keydown', e => { if (e.key === 'Enter') tryLogin(); });
+
+function showApp() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  loadFromStorage();
+  renderTabs();
+  switchPage(0);
+  loadFromSheet();
+}
+
+// --- Page Management ---
+function renderTabs() {
+  const container = document.getElementById('page-tabs');
+  container.innerHTML = pages.map((p, i) => `
+    <div class="page-tab ${i === currentPageIndex ? 'active' : ''}" onclick="switchPage(${i})" ondblclick="openRenameModal(${i})">
+      ${p.name}
+      ${pages.length > 1 ? `<span class="tab-close" onclick="event.stopPropagation(); deletePage(${i})">×</span>` : ''}
+    </div>
+  `).join('') + '<button class="tab-add" onclick="addPage()" title="新增頁面">+</button>';
+}
+
+function switchPage(index) {
+  currentPageIndex = index;
+  renderTabs();
+  loadPageToUI();
+  render();
+}
+
+function addPage() {
+  const name = '頁面 ' + (pages.length + 1);
+  pages.push({
+    name,
+    settings: { target: 10000000, current: 0, months: 120, monthlyReturn: 0.0085, monthlyInflation: 0.0025, etf: '' },
+    entries: []
+  });
+  switchPage(pages.length - 1);
+  markDirty();
+}
+
+function deletePage(index) {
+  if (pages.length <= 1) return;
+  if (!confirm(`確定要刪除「${pages[index].name}」？`)) return;
+  pages.splice(index, 1);
+  if (currentPageIndex >= pages.length) currentPageIndex = pages.length - 1;
+  switchPage(currentPageIndex);
+  markDirty();
+}
+
+function openRenameModal(index) {
+  renamingIndex = index;
+  document.getElementById('rename-input').value = pages[index].name;
+  document.getElementById('rename-modal').classList.add('show');
+  document.getElementById('rename-input').focus();
+}
+
+function closeRenameModal() {
+  document.getElementById('rename-modal').classList.remove('show');
+}
+
+function confirmRename() {
+  const newName = document.getElementById('rename-input').value.trim();
+  if (newName && renamingIndex >= 0) {
+    pages[renamingIndex].name = newName;
+    renderTabs();
+    saveToStorage();
+    markDirty();
+  }
+  closeRenameModal();
+}
+document.getElementById('rename-input').addEventListener('keydown', e => { if (e.key === 'Enter') confirmRename(); });
+
+function loadPageToUI() {
+  const s = pages[currentPageIndex].settings;
+  document.getElementById('s-target').value = s.target;
+  document.getElementById('s-current').value = s.current;
+  document.getElementById('s-months').value = s.months;
+  document.getElementById('s-return').value = s.monthlyReturn;
+  document.getElementById('s-inflation').value = s.monthlyInflation;
+  document.getElementById('s-etf').value = s.etf;
+}
+
+function getCurrentSettings() { return pages[currentPageIndex].settings; }
+function getCurrentEntries() { return pages[currentPageIndex].entries; }
+
+// --- Core Formulas ---
+function getR() {
+  const s = getCurrentSettings();
+  return (s.monthlyReturn + s.monthlyInflation) / 2;
+}
+
+function getC() {
+  const R = getR();
+  const s = getCurrentSettings();
+  return s.target / (s.months * Math.pow(1 + R, s.months));
+}
+
+function getPath(month) {
+  return getC() * month * Math.pow(1 + getR(), month);
+}
+
+function computeAll() {
+  const entries = getCurrentEntries();
+  const results = [];
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i];
+    const path = getPath(e.month);
+    const price = e.price || 0;
+    const actualShares = e.shares || 0;
+    const prev = i > 0 ? results[i - 1] : null;
+    const prevCS = prev ? prev.cumulativeShares : 0;
+    const prevCI = prev ? prev.cumulativeInvestment : 0;
+    const prevCP = prev ? prev.cumulativeProfit : 0;
+    const marketValueBefore = prevCS * price;
+    const suggestedShares = price > 0 ? (path - marketValueBefore) / price : 0;
+    const investmentAmount = price * actualShares;
+    const cumulativeInvestment = prevCI + investmentAmount;
+    const cumulativeShares = prevCS + actualShares;
+    const currentValue = price * cumulativeShares;
+    const sellProfit = investmentAmount > 0 ? 0 : -investmentAmount;
+    const cumulativeProfit = sellProfit + prevCP;
+    const returnRate = currentValue > 0 && cumulativeInvestment > 0 ? (currentValue - cumulativeInvestment) / cumulativeInvestment : 0;
+    results.push({ month: e.month, path, price, marketValueBefore, suggestedShares, actualShares, investmentAmount, cumulativeInvestment, cumulativeShares, currentValue, sellProfit, cumulativeProfit, returnRate });
+  }
+  return results;
+}
+
+// --- Formatting ---
+function fmt(n, d = 0) { return n == null || isNaN(n) ? '-' : n.toLocaleString('zh-TW', { minimumFractionDigits: d, maximumFractionDigits: d }); }
+function fmtPct(n) { return n == null || isNaN(n) ? '-' : (n * 100).toFixed(2) + '%'; }
+
+// --- Render ---
+function render() {
+  updateDerivedValues();
+  renderTable();
+  renderChart();
+  renderSummary();
+  saveToStorage();
+  markDirty();
+}
+
+function updateDerivedValues() {
+  document.getElementById('d-R').textContent = getR().toFixed(6);
+  document.getElementById('d-C').textContent = fmt(Math.round(getC()));
+}
+
+function renderTable() {
+  const entries = getCurrentEntries();
+  const results = computeAll();
+  document.getElementById('data-tbody').innerHTML = results.map((r, i) => `
+    <tr>
+      <td>${r.month}</td>
+      <td><input type="date" value="${entries[i].date || ''}" onchange="updateEntry(${i},'date',this.value)"></td>
+      <td class="path-value">${fmt(r.path)}</td>
+      <td><input type="number" value="${entries[i].price || ''}" step="0.01" onchange="updateEntry(${i},'price',parseFloat(this.value))" style="width:80px"></td>
+      <td class="calculated">${fmt(r.marketValueBefore)}</td>
+      <td class="calculated">${fmt(r.suggestedShares, 0)}</td>
+      <td><input type="number" value="${entries[i].shares || ''}" step="1" onchange="updateEntry(${i},'shares',parseInt(this.value))" style="width:80px"></td>
+      <td class="calculated">${fmt(r.investmentAmount)}</td>
+      <td class="calculated">${fmt(r.cumulativeInvestment)}</td>
+      <td class="calculated">${fmt(r.cumulativeShares)}</td>
+      <td class="calculated">${fmt(r.currentValue)}</td>
+      <td class="${r.returnRate >= 0 ? 'positive' : 'negative'}">${r.price > 0 ? fmtPct(r.returnRate) : '-'}</td>
+      <td><button class="delete-btn" onclick="deleteRow(${i})">×</button></td>
+    </tr>
+  `).join('');
+}
+
+function renderChart() {
+  const s = getCurrentSettings();
+  const results = computeAll();
+  const months = [], pathData = [], actualData = [];
+  for (let m = 1; m <= s.months; m++) {
+    months.push(m);
+    pathData.push(Math.round(getPath(m)));
+    const entry = results.find(r => r.month === m);
+    actualData.push(entry && entry.price > 0 ? Math.round(entry.currentValue) : null);
+  }
+  const ctx = document.getElementById('chart').getContext('2d');
+  if (chart) chart.destroy();
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: months,
+      datasets: [
+        { label: '存股路徑 (目標)', data: pathData, borderColor: '#e67e22', backgroundColor: 'rgba(230,126,34,0.1)', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2 },
+        { label: '實際庫存現值', data: actualData, borderColor: '#27ae60', backgroundColor: 'rgba(39,174,96,0.1)', fill: false, tension: 0.1, pointRadius: 4, borderWidth: 2, spanGaps: false }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'top' }, tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: $${fmt(ctx.parsed.y)}` } } },
+      scales: { x: { title: { display: true, text: '投資月數' } }, y: { title: { display: true, text: '金額 (元)' }, ticks: { callback: v => '$' + fmt(v) } } }
+    }
+  });
+}
+
+function renderSummary() {
+  const s = getCurrentSettings();
+  const results = computeAll();
+  const last = results.length > 0 ? results[results.length - 1] : null;
+  const container = document.getElementById('summary-cards');
+  if (!last || last.price === 0) { container.innerHTML = '<div class="summary-card"><div class="label">尚無資料</div><div class="value">-</div></div>'; return; }
+  const progress = (last.currentValue / s.target * 100).toFixed(1);
+  container.innerHTML = `
+    <div class="summary-card"><div class="label">庫存現值</div><div class="value">$${fmt(last.currentValue)}</div><div class="sub">累計投入 $${fmt(last.cumulativeInvestment)}</div></div>
+    <div class="summary-card"><div class="label">投報率</div><div class="value" style="color:${last.returnRate >= 0 ? '#27ae60' : '#e74c3c'}">${fmtPct(last.returnRate)}</div><div class="sub">目標進度 ${progress}%</div></div>
+    <div class="summary-card"><div class="label">累計股數</div><div class="value">${fmt(last.cumulativeShares)} 股</div><div class="sub">${s.etf}</div></div>
+    <div class="summary-card"><div class="label">剩餘月數</div><div class="value">${s.months - last.month} 個月</div><div class="sub">已投資 ${last.month} 個月</div></div>
+  `;
+}
+
+// --- User Actions ---
+function updateEntry(index, field, value) {
+  getCurrentEntries()[index][field] = value;
+  render();
+}
+
+function addRow() {
+  const entries = getCurrentEntries();
+  const lastMonth = entries.length > 0 ? entries[entries.length - 1].month : 0;
+  entries.push({ month: lastMonth + 1, date: '', price: null, shares: null });
+  render();
+  document.getElementById('data-tbody').lastElementChild?.scrollIntoView({ behavior: 'smooth' });
+}
+
+function deleteRow(index) {
+  const entries = getCurrentEntries();
+  if (!confirm(`確定要刪除第 ${entries[index].month} 個月的資料？`)) return;
+  entries.splice(index, 1);
+  entries.forEach((e, i) => e.month = i + 1);
+  render();
+}
+
+function onSettingsChange() {
+  const s = getCurrentSettings();
+  s.target = parseFloat(document.getElementById('s-target').value) || 0;
+  s.current = parseFloat(document.getElementById('s-current').value) || 0;
+  s.months = parseInt(document.getElementById('s-months').value) || 120;
+  s.monthlyReturn = parseFloat(document.getElementById('s-return').value) || 0;
+  s.monthlyInflation = parseFloat(document.getElementById('s-inflation').value) || 0;
+  s.etf = document.getElementById('s-etf').value || '';
+  render();
+}
+
+function toggleSettings() { document.getElementById('settings-panel').classList.toggle('collapsed'); }
+
+// --- Storage ---
+function saveToStorage() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ pages, currentPageIndex, version: 1 }));
+}
+
+function loadFromStorage() {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (raw) {
+    try {
+      const data = JSON.parse(raw);
+      if (data.pages) pages = data.pages;
+      if (data.currentPageIndex != null) currentPageIndex = data.currentPageIndex;
+    } catch (e) {}
+  }
+  const gasUrl = localStorage.getItem(GAS_URL_KEY);
+  if (gasUrl) {
+    document.getElementById('gas-url').value = gasUrl;
+    document.getElementById('gas-config').style.background = '#d4edda';
+  }
+}
+
+// --- Google Sheet Sync ---
+function saveGasUrl() {
+  const url = document.getElementById('gas-url').value.trim();
+  if (url) {
+    localStorage.setItem(GAS_URL_KEY, url);
+    document.getElementById('gas-config').style.background = '#d4edda';
+    setSyncStatus('URL 已儲存', 'synced');
+  }
+}
+
+async function saveToSheet() {
+  const url = localStorage.getItem(GAS_URL_KEY);
+  if (!url) { alert('請先設定 Google Apps Script URL'); return; }
+  setSyncStatus('儲存中...', '');
+  try {
+    await fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ pages, version: 1 }) });
+    hasUnsavedChanges = false;
+    setSyncStatus('已儲存 ' + new Date().toLocaleTimeString(), 'synced');
+  } catch (err) {
+    setSyncStatus('儲存失敗: ' + err.message, 'error');
+  }
+}
+
+async function loadFromSheet() {
+  const url = localStorage.getItem(GAS_URL_KEY);
+  if (!url) return;
+  try {
+    const resp = await fetch(url + '?action=load');
+    const data = await resp.json();
+    if (data.pages) {
+      pages = data.pages;
+      currentPageIndex = 0;
+      renderTabs();
+      loadPageToUI();
+      render();
+      setSyncStatus('已從 Sheet 載入', 'synced');
+    }
+  } catch (err) {}
+}
+
+function setSyncStatus(text, cls) {
+  const el = document.getElementById('sync-status');
+  el.textContent = text;
+  el.className = 'sync-status ' + (cls || '');
+}
+
+if (sessionStorage.getItem('etf-multi-authed') === '1') { showApp(); }
+</script>
+</body>
+</html>
